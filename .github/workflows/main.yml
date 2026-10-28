@@ -54,14 +54,24 @@ jobs:
         # 2. 原生集成 Sakion-Team/Re-Kernel
         git clone https://github.com/Sakion-Team/Re-Kernel.git rekernel_tmp --depth=1
         
-        # 复制 Re-Kernel 驱动源码到 drivers/rekernel
+        # 将 Re-Kernel 驱动源码放置到 drivers/rekernel
         if [ -d "rekernel_tmp/Integrate/drivers/rekernel" ]; then
           cp -rf rekernel_tmp/Integrate/drivers/rekernel drivers/
         elif [ -d "rekernel_tmp/Integrate/rekernel" ]; then
           cp -rf rekernel_tmp/Integrate/rekernel drivers/
+        elif [ -d "rekernel_tmp/rekernel" ]; then
+          cp -rf rekernel_tmp/rekernel drivers/
+        fi
+        
+        # 预防性修复：解决 4.14 内核回移植 cgroup freezer v2 导致的 JOBCTL_TRAP_FREEZE 缺失问题
+        if [ -f "drivers/rekernel/rekernel.h" ]; then
+          if ! grep -q "sched/jobctl.h" drivers/rekernel/rekernel.h; then
+            echo "Injecting #include <linux/sched/jobctl.h> into drivers/rekernel/rekernel.h..."
+            sed -i '1i #include <linux/sched/jobctl.h>' drivers/rekernel/rekernel.h
+          fi
         fi
 
-        # 运行 Re-Kernel 官方 Modifier 脚本自动打补丁
+        # 运行 Re-Kernel 自动化 Hook 脚本
         if [ -f "rekernel_tmp/Integrate/patch.py" ]; then
           python3 rekernel_tmp/Integrate/patch.py .
         elif [ -f "rekernel_tmp/Integrate/main.py" ]; then
@@ -89,7 +99,7 @@ jobs:
           echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
         
-        # 4. 改写 AnyKernel3 设备白名单
+        # 4. 改写 AnyKernel3 设备白名单（完整 8 机型）
         if [ -f "AnyKernel3/anykernel.sh" ]; then
           sed -i '/device\.name/d' AnyKernel3/anykernel.sh
           echo "device.name1=OnePlus7" >> AnyKernel3/anykernel.sh
