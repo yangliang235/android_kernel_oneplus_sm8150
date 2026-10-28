@@ -55,7 +55,7 @@ jobs:
     - name: Setup APatch & Get Version
       id: get_version
       run: |
-        git clone https://github.com/APatch-Root/APatch -b main --depth=1 APatch
+        git clone https://github.com/bmax121/APatch.git -b main --depth=1 APatch
         cd APatch
         echo "VERSION=$(expr $(git rev-list --count HEAD) + 10000)" >> $GITHUB_OUTPUT
         cd ..
