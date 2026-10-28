@@ -48,18 +48,29 @@ jobs:
 
     - name: Integrate NoMount, Re-Kernel Natively & Configure Kernel
       run: |
+        # 1. 原生集成 NoMount 源码
         curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/master/kernel/setup.sh | bash
 
+        # 2. 原生集成 Sakion-Team/Re-Kernel
         git clone https://github.com/Sakion-Team/Re-Kernel.git rekernel_tmp --depth=1
-        if [ -d "rekernel_tmp/Integrate" ]; then
-          if [ -f "rekernel_tmp/Integrate/setup.sh" ]; then
-            bash rekernel_tmp/Integrate/setup.sh
-          elif [ -d "rekernel_tmp/Integrate/drivers" ]; then
-            cp -rf rekernel_tmp/Integrate/drivers/* drivers/
-          fi
+        
+        # 复制 Re-Kernel 驱动源码到 drivers/rekernel
+        if [ -d "rekernel_tmp/Integrate/drivers/rekernel" ]; then
+          cp -rf rekernel_tmp/Integrate/drivers/rekernel drivers/
+        elif [ -d "rekernel_tmp/Integrate/rekernel" ]; then
+          cp -rf rekernel_tmp/Integrate/rekernel drivers/
         fi
+
+        # 运行 Re-Kernel 官方 Modifier 脚本自动打补丁
+        if [ -f "rekernel_tmp/Integrate/patch.py" ]; then
+          python3 rekernel_tmp/Integrate/patch.py .
+        elif [ -f "rekernel_tmp/Integrate/main.py" ]; then
+          python3 rekernel_tmp/Integrate/main.py .
+        fi
+        
         rm -rf rekernel_tmp
 
+        # 3. 写入内核配置开关
         CONFIG_FILE="arch/arm64/configs/$KERNEL_DEFCONFIG"
         if [ -f "$CONFIG_FILE" ]; then
           echo "CONFIG_KALLSYMS=y" >> "$CONFIG_FILE"
@@ -78,6 +89,7 @@ jobs:
           echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
         
+        # 4. 改写 AnyKernel3 设备白名单
         if [ -f "AnyKernel3/anykernel.sh" ]; then
           sed -i '/device\.name/d' AnyKernel3/anykernel.sh
           echo "device.name1=OnePlus7" >> AnyKernel3/anykernel.sh
