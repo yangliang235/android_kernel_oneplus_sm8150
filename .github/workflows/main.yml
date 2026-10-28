@@ -54,7 +54,6 @@ jobs:
         # 2. 拉取并集成 Sakion-Team/Re-Kernel 源码
         git clone https://github.com/Sakion-Team/Re-Kernel.git rekernel_tmp --depth=1
         if [ -d "rekernel_tmp/Integrate" ]; then
-          # 如果 Re-Kernel 提供了自动修补/配置脚本则自动执行
           if [ -f "rekernel_tmp/Integrate/setup.sh" ]; then
             bash rekernel_tmp/Integrate/setup.sh
           elif [ -d "rekernel_tmp/Integrate/drivers" ]; then
@@ -65,14 +64,9 @@ jobs:
 
         CONFIG_FILE="arch/arm64/configs/$KERNEL_DEFCONFIG"
         if [ -f "$CONFIG_FILE" ]; then
-          # APatch 符号表配置
           echo "CONFIG_KALLSYMS=y" >> "$CONFIG_FILE"
           echo "CONFIG_KALLSYMS_ALL=y" >> "$CONFIG_FILE"
-
-          # ZRAM 回写配置
           echo "CONFIG_ZRAM_WRITEBACK=y" >> "$CONFIG_FILE"
-
-          # NoMount / OverlayFS 相关依赖
           echo "CONFIG_NOMOUNT=y" >> "$CONFIG_FILE"
           echo "CONFIG_OVERLAY_FS=y" >> "$CONFIG_FILE"
           echo "CONFIG_OVERLAY_FS_REDIRECT_DIR=y" >> "$CONFIG_FILE"
@@ -83,23 +77,23 @@ jobs:
           echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
-
-          # Re-Kernel 内核开关配置
           echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
         
-        # 改写 AnyKernel3 设备白名单（适配全系 8 个代号）
+        # 安全地改写 AnyKernel3 设备白名单，避免 YAML 语法错误
         if [ -f "AnyKernel3/anykernel.sh" ]; then
           sed -i '/device\.name/d' AnyKernel3/anykernel.sh
-          sed -i '/block\.device/a \
-device.name1=OnePlus7\
-device.name2=OnePlus7Pro\
-device.name3=OnePlus7T\
-device.name4=OnePlus7TPro\
-device.name5=hotdogb\
-device.name6=hotdog\
-device.name7=guacamole\
-device.name8=guacamoleb' AnyKernel3/anykernel.sh
+          cat << 'EOF' >> AnyKernel3/anykernel.sh
+
+device.name1=OnePlus7
+device.name2=OnePlus7Pro
+device.name3=OnePlus7T
+device.name4=OnePlus7TPro
+device.name5=hotdogb
+device.name6=hotdog
+device.name7=guacamole
+device.name8=guacamoleb
+EOF
         fi
 
     - name: Build Kernel & Package Zip
@@ -113,7 +107,6 @@ device.name8=guacamoleb' AnyKernel3/anykernel.sh
         make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
         make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
         
-        # 打包 AnyKernel3 Zip
         cp out/arch/arm64/boot/Image AnyKernel3/
         cd AnyKernel3
         zip -r9 "../OP7-OOS11-kernel-APatchReady.zip" * -x README.md
