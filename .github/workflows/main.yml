@@ -2,7 +2,6 @@ name: Build OnePlus-Sm8150-Kernel-OOS11
 on:
   workflow_dispatch:
   schedule:
-      # Run once a week on Sunday at midnight. See http://crontab.guru
       - cron: '0 21 * * *'
   push:
     branches:
@@ -42,34 +41,23 @@ jobs:
         sudo apt install gcc-aarch64-linux-gnu -y
         sudo apt install gcc-arm-linux-gnueabi -y
         sudo apt install clang-14 -y
-        sudo apt install binutils make python3 libssl-dev build-essential bc  bison flex unzip libssl-dev ca-certificates xz-utils mkbootimg cpio device-tree-compiler git git-lfs -y
+        sudo apt install binutils make python3 libssl-dev build-essential bc bison flex unzip libssl-dev ca-certificates xz-utils mkbootimg cpio device-tree-compiler git git-lfs zip -y
         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 aarch64 --depth=1
         git clone https://github.com/snowwolf725/AnyKernel3 -b oneplus7 --depth=1
         rm -rf AnyKernel3/.git
-    - name: Remove unnecessary files
-      run: |
-        sudo rm -rf /opt/ghc
-        sudo rm -rf "/usr/local/share/boost"
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-    - name: Setup APatch & Get Version
-      id: get_version
-      run: |
-        git clone https://github.com/bmax121/APatch.git -b main --depth=1 APatch
-        cd APatch
-        echo "VERSION=$(expr $(git rev-list --count HEAD) + 10000)" >> $GITHUB_OUTPUT
-        cd ..
-        # 如果 APatch 带有自动化集成脚本，可在此处执行
-        if [ -f "APatch/setup.sh" ]; then
-          bash APatch/setup.sh .
-        fi
-    - name: Configure ZRAM Writeback and NoMount
+
+    - name: Configure APatch Requirements, ZRAM Writeback and NoMount
       run: |
         CONFIG_FILE="arch/arm64/configs/$KERNEL_DEFCONFIG"
         if [ -f "$CONFIG_FILE" ]; then
-          # 开启 ZRAM 回写支持
+          # 1. 开启 APatch 必要的内核符号配置
+          echo "CONFIG_KALLSYMS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KALLSYMS_ALL=y" >> "$CONFIG_FILE"
+
+          # 2. 开启 ZRAM 回写支持
           echo "CONFIG_ZRAM_WRITEBACK=y" >> "$CONFIG_FILE"
-          # 开启 NoMount / OverlayFS 及相关 Namespace 依赖支持
+
+          # 3. 开启 NoMount / OverlayFS 及相关 Namespace 依赖支持
           echo "CONFIG_OVERLAY_FS=y" >> "$CONFIG_FILE"
           echo "CONFIG_NAMESPACES=y" >> "$CONFIG_FILE"
           echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
@@ -78,7 +66,16 @@ jobs:
           echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
         fi
-    - name: Build Kernel
+        
+        # 将一加7全系列四个机型代号完整写入 AnyKernel3 校验白名单
+        if [ -f "AnyKernel3/anykernel.sh" ]; then
+          sed -i 's/device.name1=.*/device.name1=hotdogb/g' AnyKernel3/anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=hotdog/g' AnyKernel3/anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=guacamole/g' AnyKernel3/anykernel.sh
+          sed -i 's/device.name4=.*/device.name4=guacamoleb/g' AnyKernel3/anykernel.sh
+        fi
+
+    - name: Build Kernel & Package Zip
       run: |
         export PATH=$(pwd)/clang/bin/:$(pwd)/aarch64/bin/:$PATH
         export ARCH=arm64
@@ -88,9 +85,15 @@ jobs:
         export TARGET_PRODUCT=msmnile
         make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
         make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
-        cp out/arch/arm64/boot/Image AnyKernel3
-    - name: Upload APatch Kernel
+        
+        # 复制内核 Image 到 AnyKernel3 目录并打包
+        cp out/arch/arm64/boot/Image AnyKernel3/
+        cd AnyKernel3
+        zip -r9 "../OP7-OOS11-kernel-APatchReady.zip" * -x README.md
+        cd ..
+
+    - name: Upload Kernel Zip
       uses: actions/upload-artifact@v4
       with:
-        name: OP7-OOS11-kernel-APatch-${{ steps.get_version.outputs.VERSION }}
-        path: "AnyKernel3/*"
+        name: OP7-OOS11-kernel-APatchReady
+        path: "*.zip"
