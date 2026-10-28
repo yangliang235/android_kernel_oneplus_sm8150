@@ -52,28 +52,45 @@ jobs:
         sudo rm -rf "/usr/local/share/boost"
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-    - name: Get Version
+    - name: Setup APatch & Get Version
       id: get_version
       run: |
-        cd KernelSU
-        git fetch --unshallow
-        git pull
-        git rev-list --count HEAD
-        echo "VERSION=$(expr $(git rev-list --count HEAD) + 10200)" >> $GITHUB_OUTPUT
+        git clone https://github.com/APatch-Root/APatch -b main --depth=1 APatch
+        cd APatch
+        echo "VERSION=$(expr $(git rev-list --count HEAD) + 10000)" >> $GITHUB_OUTPUT
         cd ..
+        # 如果 APatch 带有自动化集成脚本，可在此处执行
+        if [ -f "APatch/setup.sh" ]; then
+          bash APatch/setup.sh .
+        fi
+    - name: Configure ZRAM Writeback and NoMount
+      run: |
+        CONFIG_FILE="arch/arm64/configs/$KERNEL_DEFCONFIG"
+        if [ -f "$CONFIG_FILE" ]; then
+          # 开启 ZRAM 回写支持
+          echo "CONFIG_ZRAM_WRITEBACK=y" >> "$CONFIG_FILE"
+          # 开启 NoMount / OverlayFS 及相关 Namespace 依赖支持
+          echo "CONFIG_OVERLAY_FS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NAMESPACES=y" >> "$CONFIG_FILE"
+          echo "CONFIG_UTS_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IPC_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+        fi
     - name: Build Kernel
       run: |
-       export PATH=$(pwd)/clang/bin/:$(pwd)/aarch64/bin/:$PATH
-       export ARCH=arm64
-       export SUBARCH=arm64
-       export LD=ld.lld
-       export BRAND_SHOW_FLAG=oneplus
-       export TARGET_PRODUCT=msmnile
-       make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
-       make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
-       cp out/arch/arm64/boot/Image AnyKernel3
-    - name: Upload Kernel-SU
+        export PATH=$(pwd)/clang/bin/:$(pwd)/aarch64/bin/:$PATH
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export LD=ld.lld
+        export BRAND_SHOW_FLAG=oneplus
+        export TARGET_PRODUCT=msmnile
+        make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
+        make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
+        cp out/arch/arm64/boot/Image AnyKernel3
+    - name: Upload APatch Kernel
       uses: actions/upload-artifact@v4
       with:
-        name: OP7-OOS11-kernel-SU-${{ steps.get_version.outputs.VERSION }}
+        name: OP7-OOS11-kernel-APatch-${{ steps.get_version.outputs.VERSION }}
         path: "AnyKernel3/*"
