@@ -46,18 +46,34 @@ jobs:
         git clone https://github.com/snowwolf725/AnyKernel3 -b oneplus7 --depth=1
         rm -rf AnyKernel3/.git
 
-    - name: Configure APatch Requirements, ZRAM Writeback and NoMount
+    - name: Integrate NoMount, Re-Kernel Natively & Configure Kernel
       run: |
+        # 1. 集成 NoMount 原生源码
+        curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/master/kernel/setup.sh | bash
+
+        # 2. 拉取并集成 Sakion-Team/Re-Kernel 源码
+        git clone https://github.com/Sakion-Team/Re-Kernel.git rekernel_tmp --depth=1
+        if [ -d "rekernel_tmp/Integrate" ]; then
+          # 如果 Re-Kernel 提供了自动修补/配置脚本则自动执行
+          if [ -f "rekernel_tmp/Integrate/setup.sh" ]; then
+            bash rekernel_tmp/Integrate/setup.sh
+          elif [ -d "rekernel_tmp/Integrate/drivers" ]; then
+            cp -rf rekernel_tmp/Integrate/drivers/* drivers/
+          fi
+        fi
+        rm -rf rekernel_tmp
+
         CONFIG_FILE="arch/arm64/configs/$KERNEL_DEFCONFIG"
         if [ -f "$CONFIG_FILE" ]; then
-          # 1. 开启 APatch 必要的内核符号配置
+          # APatch 符号表配置
           echo "CONFIG_KALLSYMS=y" >> "$CONFIG_FILE"
           echo "CONFIG_KALLSYMS_ALL=y" >> "$CONFIG_FILE"
 
-          # 2. 开启 ZRAM 回写支持
+          # ZRAM 回写配置
           echo "CONFIG_ZRAM_WRITEBACK=y" >> "$CONFIG_FILE"
 
-          # 3. 开启 NoMount / OverlayFS 及相关依赖
+          # NoMount / OverlayFS 相关依赖
+          echo "CONFIG_NOMOUNT=y" >> "$CONFIG_FILE"
           echo "CONFIG_OVERLAY_FS=y" >> "$CONFIG_FILE"
           echo "CONFIG_OVERLAY_FS_REDIRECT_DIR=y" >> "$CONFIG_FILE"
           echo "CONFIG_OVERLAY_FS_METACOPY=y" >> "$CONFIG_FILE"
@@ -67,18 +83,23 @@ jobs:
           echo "CONFIG_USER_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_PID_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
+
+          # Re-Kernel 内核开关配置
+          echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
         
-        # 将一加7全系列代号及显示名称写入 AnyKernel3 校验白名单
+        # 改写 AnyKernel3 设备白名单（适配全系 8 个代号）
         if [ -f "AnyKernel3/anykernel.sh" ]; then
-          sed -i 's/device.name1=.*/device.name1=OnePlus7/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name2=.*/device.name2=OnePlus7Pro/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name3=.*/device.name3=OnePlus7T/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name4=.*/device.name4=OnePlus7TPro/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name5=.*/device.name5=hotdogb/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name6=.*/device.name6=hotdog/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name7=.*/device.name7=guacamole/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name8=.*/device.name8=guacamoleb/g' AnyKernel3/anykernel.sh
+          sed -i '/device\.name/d' AnyKernel3/anykernel.sh
+          sed -i '/block\.device/a \
+device.name1=OnePlus7\
+device.name2=OnePlus7Pro\
+device.name3=OnePlus7T\
+device.name4=OnePlus7TPro\
+device.name5=hotdogb\
+device.name6=hotdog\
+device.name7=guacamole\
+device.name8=guacamoleb' AnyKernel3/anykernel.sh
         fi
 
     - name: Build Kernel & Package Zip
@@ -92,7 +113,7 @@ jobs:
         make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
         make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
         
-        # 复制内核 Image 到 AnyKernel3 目录并打包
+        # 打包 AnyKernel3 Zip
         cp out/arch/arm64/boot/Image AnyKernel3/
         cd AnyKernel3
         zip -r9 "../OP7-OOS11-kernel-APatchReady.zip" * -x README.md
