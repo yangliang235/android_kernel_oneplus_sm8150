@@ -99,18 +99,49 @@ jobs:
           echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
         
-        # 4. 改写 AnyKernel3 设备白名单（完整 8 机型）
-        if [ -f "AnyKernel3/anykernel.sh" ]; then
-          sed -i '/device\.name/d' AnyKernel3/anykernel.sh
-          echo "device.name1=OnePlus7" >> AnyKernel3/anykernel.sh
-          echo "device.name2=OnePlus7Pro" >> AnyKernel3/anykernel.sh
-          echo "device.name3=OnePlus7T" >> AnyKernel3/anykernel.sh
-          echo "device.name4=OnePlus7TPro" >> AnyKernel3/anykernel.sh
-          echo "device.name5=hotdogb" >> AnyKernel3/anykernel.sh
-          echo "device.name6=hotdog" >> AnyKernel3/anykernel.sh
-          echo "device.name7=guacamole" >> AnyKernel3/anykernel.sh
-          echo "device.name8=guacamoleb" >> AnyKernel3/anykernel.sh
-        fi
+        # 4. 写入可完美刷入的 AnyKernel3 脚本配置
+        cat << 'EOF' > AnyKernel3/anykernel.sh
+### AnyKernel3 Ramdisk Mod Script
+## osm0sis @ xda-developers
+
+### AnyKernel setup
+# begin properties
+properties() { '
+kernel.string=APatch Ready Custom Kernel (NoMount + Re-Kernel)
+do.devicecheck=1
+do.modules=0
+do.systemless=1
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=OnePlus7
+device.name2=OnePlus7Pro
+device.name3=OnePlus7T
+device.name4=OnePlus7TPro
+device.name5=hotdogb
+device.name6=hotdog
+device.name7=guacamole
+device.name8=guacamoleb
+supported.versions=
+supported.patchlevels=
+'; } # end properties
+
+### AnyKernel install
+
+## boot shell variables
+block=/dev/block/bootdevice/by-name/boot;
+is_slot_device=1;
+ramdisk_compression=auto;
+patch_vbmeta_flag=auto;
+
+# import functions/variables and setup patching - see for reference (DO NOT REMOVE)
+. tools/ak3-core.sh;
+
+# boot install
+split_boot;
+
+flash_boot;
+## end boot install
+EOF
 
     - name: Build Kernel & Package Zip
       run: |
