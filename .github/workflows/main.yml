@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    # 钉死 24.04，规避 ubuntu-latest 迁移到 26.04 期间的随机命中
+    # 钉死 24.04：apt 有 clang-14，规避 ubuntu-latest 迁移到 26.04 的随机命中
     runs-on: ubuntu-24.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -20,7 +20,8 @@ jobs:
       CCACHE_MAXSIZE: "2G"
       CCACHE_HARDLINK: "true"
       KERNEL_DEFCONFIG: "blu_spark_defconfig"
-      KERNEL_CMDLINE: "ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 O=out"
+      # CROSS_COMPILE 改用 apt 的 aarch64-linux-gnu-，配合 clang-14
+      KERNEL_CMDLINE: "ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 O=out"
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -40,15 +41,13 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update -y
+        # 交叉 GCC/binutils：LLVM=1 时主要给 binutils 兜底，以及个别 Makefile 显式调用
         sudo apt install gcc-aarch64-linux-gnu -y
         sudo apt install gcc-arm-linux-gnueabi -y
-        # 不再 apt install clang-14 / mkbootimg：
-        #  - clang-14 在 Ubuntu 26.04 已无包
-        #  - mkbootimg 在 26.04 也可能被移除，且本项目不生成 boot.img
+        # 4.14 内核用 clang-14（对应 AOSP clang-r450784d 主版本线），lld-14 提供 ld.lld-14
+        sudo apt install clang-14 lld-14 llvm-14 -y
+        # 不再 apt install mkbootimg：本项目只输出 Image，由 AnyKernel3 在设备上重打包
         sudo apt install binutils make python3 libssl-dev build-essential bc bison flex unzip ca-certificates xz-utils cpio device-tree-compiler git git-lfs zip -y
-        # 预编译 clang r450784d (= clang 14.0.7)，4.14 内核标准工具链，跨 runner 版本稳定
-        git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r450784d.git clang --depth=1
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 aarch64 --depth=1
         git clone https://github.com/snowwolf725/AnyKernel3 -b oneplus7 --depth=1
         rm -rf AnyKernel3/.git
 
@@ -151,15 +150,14 @@ jobs:
 
     - name: Build Kernel & Package Zip
       run: |
-        export PATH=$(pwd)/clang/bin/:$(pwd)/aarch64/bin/:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-        export LD=$(pwd)/clang/bin/ld.lld
+        export LD=ld.lld-14
         export BRAND_SHOW_FLAG=oneplus
         export TARGET_PRODUCT=msmnile
-        # 使用 PATH 中的 prebuilt clang r450784d，ccache 正常缓存
-        make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang"
-        make $KERNEL_CMDLINE CC="ccache clang" -j$(nproc --all)
+        # 直接走系统 clang-14，ccache 包装；不再需要 $(pwd)/clang/bin 之类的 PATH 注入
+        make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
+        make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
 
         cp out/arch/arm64/boot/Image AnyKernel3/
         cd AnyKernel3
