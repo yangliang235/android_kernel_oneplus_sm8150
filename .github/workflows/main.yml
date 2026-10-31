@@ -7,7 +7,7 @@ on:
     branches:
       - oneplus/OOS_SM8150_11.0
   pull_request:
-      branches:
+    branches:
       - oneplus/OOS_SM8150_11.0
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         fetch-depth: 1
     - name: Set up ccache
       uses: hendrikmuhs/ccache-action@v1.2
-      
+
     - name: Remove unnecessary files
       run: |
         sudo rm -rf /opt/ghc
@@ -37,7 +37,7 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
     - name: Install dependencies
       run: |
-        sudo apt-get update -y 
+        sudo apt-get update -y
         sudo apt install gcc-aarch64-linux-gnu -y
         sudo apt install gcc-arm-linux-gnueabi -y
         sudo apt install clang-14 -y
@@ -53,7 +53,7 @@ jobs:
 
         # 2. 原生集成 Sakion-Team/Re-Kernel
         git clone https://github.com/Sakion-Team/Re-Kernel.git rekernel_tmp --depth=1
-        
+
         # 将 Re-Kernel 驱动源码放置到 drivers/rekernel
         if [ -d "rekernel_tmp/Integrate/drivers/rekernel" ]; then
           cp -rf rekernel_tmp/Integrate/drivers/rekernel drivers/
@@ -62,7 +62,7 @@ jobs:
         elif [ -d "rekernel_tmp/rekernel" ]; then
           cp -rf rekernel_tmp/rekernel drivers/
         fi
-        
+
         # 预防性修复：解决 4.14 内核回移植 cgroup freezer v2 导致的 JOBCTL_TRAP_FREEZE 缺失问题
         if [ -f "drivers/rekernel/rekernel.h" ]; then
           if ! grep -q "sched/jobctl.h" drivers/rekernel/rekernel.h; then
@@ -77,7 +77,7 @@ jobs:
         elif [ -f "rekernel_tmp/Integrate/main.py" ]; then
           python3 rekernel_tmp/Integrate/main.py .
         fi
-        
+
         rm -rf rekernel_tmp
 
         # 3. 写入内核配置开关
@@ -98,50 +98,50 @@ jobs:
           echo "CONFIG_NET_NS=y" >> "$CONFIG_FILE"
           echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
-        
-        # 4. 写入可完美刷入的 AnyKernel3 脚本配置
-        cat << 'EOF' > AnyKernel3/anykernel.sh
-### AnyKernel3 Ramdisk Mod Script
-## osm0sis @ xda-developers
 
-### AnyKernel setup
-# begin properties
-properties() { '
-kernel.string=APatch Ready Custom Kernel (NoMount + Re-Kernel)
-do.devicecheck=1
-do.modules=0
-do.systemless=1
-do.cleanup=1
-do.cleanuponabort=0
-device.name1=OnePlus7
-device.name2=OnePlus7Pro
-device.name3=OnePlus7T
-device.name4=OnePlus7TPro
-device.name5=hotdogb
-device.name6=hotdog
-device.name7=guacamole
-device.name8=guacamoleb
-supported.versions=
-supported.patchlevels=
-'; } # end properties
-
-### AnyKernel install
-
-## boot shell variables
-block=/dev/block/bootdevice/by-name/boot;
-is_slot_device=1;
-ramdisk_compression=auto;
-patch_vbmeta_flag=auto;
-
-# import functions/variables and setup patching - see for reference (DO NOT REMOVE)
-. tools/ak3-core.sh;
-
-# boot install
-split_boot;
-
-flash_boot;
-## end boot install
-EOF
+        # 4. 写入 AnyKernel3 脚本配置（使用 printf 避免 YAML heredoc 缩进问题）
+        printf '%s\n' \
+          '### AnyKernel3 Ramdisk Mod Script' \
+          '## osm0sis @ xda-developers' \
+          '' \
+          '### AnyKernel setup' \
+          '# begin properties' \
+          "properties() { '" \
+          'kernel.string=APatch Ready Custom Kernel (NoMount + Re-Kernel)' \
+          'do.devicecheck=1' \
+          'do.modules=0' \
+          'do.systemless=1' \
+          'do.cleanup=1' \
+          'do.cleanuponabort=0' \
+          'device.name1=OnePlus7' \
+          'device.name2=OnePlus7Pro' \
+          'device.name3=OnePlus7T' \
+          'device.name4=OnePlus7TPro' \
+          'device.name5=hotdogb' \
+          'device.name6=hotdog' \
+          'device.name7=guacamole' \
+          'device.name8=guacamoleb' \
+          'supported.versions=' \
+          'supported.patchlevels=' \
+          "'; } # end properties" \
+          '' \
+          '### AnyKernel install' \
+          '' \
+          '## boot shell variables' \
+          'block=/dev/block/bootdevice/by-name/boot;' \
+          'is_slot_device=1;' \
+          'ramdisk_compression=auto;' \
+          'patch_vbmeta_flag=auto;' \
+          '' \
+          '# import functions/variables and setup patching - see for reference (DO NOT REMOVE)' \
+          '. tools/ak3-core.sh;' \
+          '' \
+          '# boot install' \
+          'split_boot;' \
+          '' \
+          'flash_boot;' \
+          '## end boot install' \
+          > AnyKernel3/anykernel.sh
 
     - name: Build Kernel & Package Zip
       run: |
@@ -153,7 +153,7 @@ EOF
         export TARGET_PRODUCT=msmnile
         make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang-14"
         make $KERNEL_CMDLINE CC="ccache clang-14" -j$(nproc --all)
-        
+
         cp out/arch/arm64/boot/Image AnyKernel3/
         cd AnyKernel3
         zip -r9 "../OP7-OOS11-kernel-APatchReady111.zip" * -x README.md
