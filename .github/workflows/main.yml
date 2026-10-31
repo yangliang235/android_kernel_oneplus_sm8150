@@ -12,7 +12,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 钉死 24.04，规避 ubuntu-latest 迁移到 26.04 期间的随机命中
+    runs-on: ubuntu-24.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -41,8 +42,11 @@ jobs:
         sudo apt-get update -y
         sudo apt install gcc-aarch64-linux-gnu -y
         sudo apt install gcc-arm-linux-gnueabi -y
-        # 注意：Ubuntu 26.04 已无 clang-14 包，改用 LineageOS 预编译 clang-r450784d (= clang 14)
-        sudo apt install binutils make python3 libssl-dev build-essential bc bison flex unzip libssl-dev ca-certificates xz-utils mkbootimg cpio device-tree-compiler git git-lfs zip -y
+        # 不再 apt install clang-14 / mkbootimg：
+        #  - clang-14 在 Ubuntu 26.04 已无包
+        #  - mkbootimg 在 26.04 也可能被移除，且本项目不生成 boot.img
+        sudo apt install binutils make python3 libssl-dev build-essential bc bison flex unzip ca-certificates xz-utils cpio device-tree-compiler git git-lfs zip -y
+        # 预编译 clang r450784d (= clang 14.0.7)，4.14 内核标准工具链，跨 runner 版本稳定
         git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r450784d.git clang --depth=1
         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 aarch64 --depth=1
         git clone https://github.com/snowwolf725/AnyKernel3 -b oneplus7 --depth=1
@@ -101,7 +105,7 @@ jobs:
           echo "CONFIG_REKERNEL=y" >> "$CONFIG_FILE"
         fi
 
-        # 4. 写入 AnyKernel3 脚本配置（使用 printf 避免 YAML heredoc 缩进问题）
+        # 4. 写入 AnyKernel3 脚本配置（printf 避免 YAML heredoc 缩进问题）
         printf '%s\n' \
           '### AnyKernel3 Ramdisk Mod Script' \
           '## osm0sis @ xda-developers' \
@@ -150,10 +154,10 @@ jobs:
         export PATH=$(pwd)/clang/bin/:$(pwd)/aarch64/bin/:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-        export LD=ld.lld
+        export LD=$(pwd)/clang/bin/ld.lld
         export BRAND_SHOW_FLAG=oneplus
         export TARGET_PRODUCT=msmnile
-        # 使用 PATH 中的 prebuilt clang（r450784d），ccache 命中即缓存
+        # 使用 PATH 中的 prebuilt clang r450784d，ccache 正常缓存
         make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang"
         make $KERNEL_CMDLINE CC="ccache clang" -j$(nproc --all)
 
